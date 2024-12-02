@@ -101,3 +101,10 @@ app.include_router(donation_router, tags=["donations"])
 app.include_router(donation_chat_router, tags=["donation_chats"])
 app.include_router(chat_websocket_router, tags=["chat_websocket"])
 app.include_router(statistics_router, tags=["statistics"])
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    # Usa el puerto que Render especifica en la variable de entorno `PORT`
+    uvicorn.run(app, host="0.0.0.0", port= 10000)
