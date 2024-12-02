@@ -103,8 +103,6 @@ app.include_router(chat_websocket_router, tags=["chat_websocket"])
 app.include_router(statistics_router, tags=["statistics"])
 
 
-if __name__ == "__main__":
-    import uvicorn
-
-    # Usa el puerto que Render especifica en la variable de entorno `PORT`
-    uvicorn.run(app, host="0.0.0.0", port= 10000)
+if __name__ == '__main__':
+    print("Starting Flask app")
+    app.run(debug=True, host="0.0.0.0")
