@@ -4,8 +4,11 @@ from fastapi import APIRouter, HTTPException, status
 from config.db import conn
 from models.donation import donations
 from models.donated_food import donated_foods
+from models.user import users
 from sqlalchemy import select, func, text
 from sqlalchemy.exc import SQLAlchemyError
+from fastapi import Query
+from datetime import date
 
 
 # Crear el router para las estadísticas
@@ -203,4 +206,158 @@ def get_users_by_role():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al obtener la cantidad de usuarios por rol"
+        ) from e
+
+@statistics_router.get('/total_donations')
+def get_total_donations():
+    """
+    Devuelve el número total de donaciones realizadas.
+    """
+    try:
+        # Consulta para contar las donaciones realizadas
+        query = select(func.count(donations.c.donation_id).label("total_donations"))
+        result = conn.execute(query).fetchone()
+
+        # Devolver el resultado
+        return {"total_donations": result.total_donations}
+
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al obtener el total de donaciones"
+        ) from e
+
+@statistics_router.get('/total_food')
+def get_total_food():
+    """
+    Devuelve la cantidad total de alimentos donados (kilogramos y litros).
+    """
+    try:
+        # Consulta para sumar las cantidades de alimentos donados
+        query = select(func.sum(donated_foods.c.quantity).label("total_food_quantity"))
+        result = conn.execute(query).fetchone()
+
+        # Devolver el resultado con un valor por defecto de 0
+        return {"total_food_quantity": result.total_food_quantity or 0}
+
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al obtener el total de alimentos donados"
+        ) from e
+
+@statistics_router.get('/total_users')
+def get_total_users():
+    """
+    Devuelve el número total de usuarios registrados en la plataforma.
+    """
+    try:
+        # Consulta para contar los usuarios registrados
+        query = select(func.count().label("total_users")).select_from(users)
+        result = conn.execute(query).fetchone()
+
+        # Devolver el resultado
+        return {"total_users": result.total_users}
+
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al obtener el total de usuarios"
+        ) from e
+
+@statistics_router.get('/total_charities')
+def get_total_charities():
+    """
+    Devuelve el número total de organizaciones benéficas registradas.
+    """
+    try:
+        # Consulta para contar los usuarios con rol de organización benéfica
+        query = select(func.count(users.c.user_id).label("total_charities")).where(users.c.role == "charity")
+        result = conn.execute(query).fetchone()
+
+        # Devolver el resultado
+        return {"total_charities": result.total_charities}
+
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al obtener el total de organizaciones benéficas"
+        ) from e
+
+@statistics_router.get('/donations_report')
+def get_donations_report(start_date: date = Query(...), end_date: date = Query(...)):
+    """
+    Obtener un reporte de donaciones realizadas en un rango de fechas, incluyendo los nombres de donantes y receptores.
+    """
+    try:
+        query = text("""
+            SELECT 
+                d.donation_id,
+                u_donor.name AS donor_name,
+                u_receiver.name AS receiver_name,
+                d.description,
+                d.status,
+                d.created_at
+            FROM donations d
+            INNER JOIN users u_donor ON d.donor_id = u_donor.user_id
+            INNER JOIN users u_receiver ON d.receiver_id = u_receiver.user_id
+            WHERE d.created_at BETWEEN :start_date AND :end_date
+            ORDER BY d.created_at
+        """)
+        result = conn.execute(query, {"start_date": start_date, "end_date": end_date}).fetchall()
+
+        # Convertir resultados en una lista de diccionarios
+        donations_report = [
+            {
+                "donation_id": row[0],
+                "donor_name": row[1],
+                "receiver_name": row[2],
+                "description": row[3],
+                "status": row[4],
+                "created_at": row[5].strftime("%Y-%m-%d %H:%M:%S")
+            }
+            for row in result
+        ]
+
+        return {"data": donations_report}
+
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=500, detail="Error al obtener el reporte de donaciones"
+        ) from e
+
+@statistics_router.get('/food_donations_report')
+def get_food_donations_report(start_date: date = Query(...), end_date: date = Query(...)):
+    """
+    Obtener un reporte de alimentos donados por categoría en un rango de fechas.
+    """
+    try:
+        query = text("""
+            SELECT 
+                donated_food.category AS category,
+                donated_food.unit_of_measure AS unit_of_measure,
+                SUM(donated_food.quantity) AS total_quantity
+            FROM donated_food
+            INNER JOIN donations ON donated_food.donation_id = donations.donation_id
+            WHERE donations.created_at BETWEEN :start_date AND :end_date
+            GROUP BY donated_food.category, donated_food.unit_of_measure
+            ORDER BY total_quantity DESC
+        """)
+        result = conn.execute(query, {"start_date": start_date, "end_date": end_date}).fetchall()
+
+        # Convertir resultados en una lista de diccionarios
+        food_donations_report = [
+            {
+                "category": row[0],
+                "unit_of_measure": row[1],
+                "total_quantity": row[2]
+            }
+            for row in result
+        ]
+
+        return {"data": food_donations_report}
+
+    except SQLAlchemyError as e:
+        raise HTTPException(
+            status_code=500, detail="Error al obtener el reporte de alimentos donados"
         ) from e
