@@ -23,7 +23,13 @@ DATABASE_URL = (
 )
 
 # Crear la conexión a la base de datos
-engine = create_engine(DATABASE_URL)
+try:
+    engine = create_engine(DATABASE_URL)
+    conn = engine.connect()
+    print("Conexión a la base de datos exitosa")
+except Exception as e:
+    print(f"Error al conectar a la base de datos: {e}")
+
 meta = MetaData()
 conn = engine.connect()
 
